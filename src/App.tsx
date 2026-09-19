@@ -1,28 +1,19 @@
 import React, { useState, useEffect, useId } from 'react';
 import { 
-  onAuthStateChanged, 
-  signInWithPopup, 
-  signInWithEmailAndPassword, 
-  signOut,
-  User 
-} from 'firebase/auth';
-import { 
   collection, 
   onSnapshot, 
   addDoc, 
   deleteDoc, 
   updateDoc, 
-  setDoc,
+  setDoc, 
   doc, 
   query, 
   serverTimestamp 
 } from 'firebase/firestore';
 import { 
-  auth, 
-  googleProvider, 
   db, 
-  ADMIN_EMAIL, 
-  isUserAdmin 
+  ADMIN_CREDENTIALS, 
+  verifyAdminCredentials 
 } from './firebase.ts';
 import { Product, INITIAL_SEED_PRODUCT } from './types.ts';
 import { 
@@ -56,8 +47,14 @@ import { resolveThumbnail, calculateUsdFromNgn } from './lib/productUtils.ts';
 export default function App() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
+
+  // Dedicated Admin mode - strictly false by default for all visitors
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('erex_admin_session') === 'true';
+    }
+    return false;
+  });
 
   // Active FAQ state
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
@@ -65,10 +62,10 @@ export default function App() {
   // Mobile menu open state
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Admin modals & forms
+  // Admin login credentials modal
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [emailInput, setEmailInput] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
+  const [adminUsername, setAdminUsername] = useState('');
+  const [adminPasscode, setAdminPasscode] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
 
   // Product Create/Edit state
@@ -92,26 +89,6 @@ export default function App() {
   const imageId = useId();
   const checkoutId = useId();
   const categoryId = useId();
-
-  // The creator and owner is shopmoney962@gmail.com; default to active admin in studio session
-  const [ownerMode, setOwnerMode] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('erex_owner_mode');
-      if (stored !== null) return stored === 'true';
-    }
-    return true;
-  });
-
-  const isAdmin = ownerMode || isUserAdmin(currentUser?.email);
-
-  // Listen to Firebase Auth state
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-      setAuthLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
 
   // Listen to Firestore Products
   useEffect(() => {
@@ -188,41 +165,30 @@ export default function App() {
     }
   }, [actionSuccessMsg]);
 
-  // Auth Handlers
-  const handleGoogleSignIn = async () => {
-    setAuthError(null);
-    try {
-      await signInWithPopup(auth, googleProvider);
-      setIsAuthModalOpen(false);
-      setActionSuccessMsg('Signed in successfully.');
-    } catch (err: any) {
-      console.error('Google Sign In Error:', err);
-      setAuthError(err.message || 'Failed to sign in with Google');
-    }
-  };
-
-  const handleEmailSignIn = async (e: React.FormEvent) => {
+  // Administrator Authentication Handlers
+  const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
-    try {
-      await signInWithEmailAndPassword(auth, emailInput.trim(), passwordInput);
+    if (verifyAdminCredentials(adminUsername, adminPasscode)) {
+      setIsAdmin(true);
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('erex_admin_session', 'true');
+      }
       setIsAuthModalOpen(false);
-      setEmailInput('');
-      setPasswordInput('');
-      setActionSuccessMsg('Signed in successfully.');
-    } catch (err: any) {
-      console.error('Email Sign In Error:', err);
-      setAuthError(err.message || 'Invalid credentials or sign in failed');
+      setAdminUsername('');
+      setAdminPasscode('');
+      setActionSuccessMsg('Admin Mode unlocked. Store management access granted.');
+    } else {
+      setAuthError('Access denied: Invalid administrator credentials.');
     }
   };
 
-  const handleSignOut = async () => {
-    try {
-      await signOut(auth);
-      setActionSuccessMsg('Signed out successfully.');
-    } catch (err: any) {
-      console.error('Sign Out Error:', err);
+  const handleAdminLogout = () => {
+    setIsAdmin(false);
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('erex_admin_session');
     }
+    setActionSuccessMsg('Admin Mode locked. Returned to visitor view.');
   };
 
   // Product Handlers
@@ -263,6 +229,10 @@ export default function App() {
 
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isAdmin) {
+      setFormError('Unauthorized: Administrator privileges required.');
+      return;
+    }
     if (!title.trim() || !description.trim() || !price.trim() || !checkoutUrl.trim()) {
       setFormError('Please fill in title, description, price, and checkout link.');
       return;
@@ -345,7 +315,7 @@ export default function App() {
 
   const handleDeleteProduct = async (productId: string) => {
     if (!isAdmin) {
-      alert('Only the store owner (shopmoney962@gmail.com) can remove products.');
+      setActionSuccessMsg('Action restricted: Administrator privileges required.');
       return;
     }
     if (!window.confirm('Are you sure you want to remove this product from the storefront?')) {
@@ -406,8 +376,8 @@ export default function App() {
       <div className="relative z-10 flex flex-col min-h-screen">
         
         {/* TOP NAV BAR */}
-        <header id="site-header" className="sticky top-0 z-40 backdrop-blur-md bg-[#05060A]/90 border-b border-[#1E2333]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 h-18 sm:h-20 flex items-center justify-between">
+        <header id="site-header" className="sticky top-0 z-40 backdrop-blur-md bg-[#05060A]/90 border-b border-[#1E2333] w-full">
+          <div className="w-full px-4 sm:px-6 lg:px-10 xl:px-14 h-18 sm:h-20 flex items-center justify-between">
             
             {/* Wordmark Logo with brand SVG mark */}
             <a 
@@ -449,31 +419,29 @@ export default function App() {
               </a>
 
               {/* Admin Button / Status */}
-              {authLoading ? (
-                <div className="w-6 h-6 rounded-full border border-[#1E2333] border-t-[#2E5EFF] animate-spin ml-1" />
-              ) : currentUser ? (
+              {isAdmin ? (
                 <div className="flex items-center gap-2 ml-1">
-                  {isAdmin && (
-                    <button
-                      id="admin-add-product-btn"
-                      onClick={openNewProductModal}
-                      className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-[#2E5EFF] hover:bg-[#254dd6] rounded-full shadow-[0_0_15px_rgba(46,94,255,0.4)] transition-all cursor-pointer whitespace-nowrap"
-                    >
-                      <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                      <span>Add Product</span>
-                    </button>
-                  )}
+                  <button
+                    id="admin-add-product-btn"
+                    onClick={openNewProductModal}
+                    className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-[#2E5EFF] hover:bg-[#254dd6] rounded-full shadow-[0_0_15px_rgba(46,94,255,0.4)] transition-all cursor-pointer whitespace-nowrap"
+                  >
+                    <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <span>Add Product</span>
+                  </button>
 
-                  <div className="flex items-center gap-1.5 nav-pill px-3 py-1.5 rounded-full text-xs">
-                    <span className="max-w-[110px] truncate text-[#8A90A6]" title={currentUser.email || ''}>
-                      {currentUser.email}
+                  <div className="flex items-center gap-2 nav-pill px-3 py-1.5 rounded-full text-xs">
+                    <span className="w-2 h-2 rounded-full bg-[#16C79A] flex-shrink-0 animate-pulse" />
+                    <span className="text-[#16C79A] font-semibold text-[11px] uppercase tracking-wider">
+                      Admin Active
                     </span>
                     <button
-                      onClick={handleSignOut}
-                      title="Sign Out"
-                      className="text-[#8A90A6] hover:text-[#F5F6FA] p-0.5 rounded transition-colors cursor-pointer"
+                      onClick={handleAdminLogout}
+                      title="Lock & Exit Admin Mode"
+                      className="text-[#8A90A6] hover:text-rose-400 p-0.5 rounded transition-colors cursor-pointer flex items-center gap-1 ml-1"
                     >
                       <LogOut className="w-3 h-3" />
+                      <span className="text-[10px]">Lock</span>
                     </button>
                   </div>
                 </div>
@@ -485,7 +453,7 @@ export default function App() {
                     setIsAuthModalOpen(true);
                   }}
                   className="nav-pill text-xs font-medium px-3.5 py-2 rounded-full flex items-center gap-1.5 cursor-pointer ml-1 text-[#8A90A6] hover:text-[#F5F6FA] whitespace-nowrap"
-                  title="Store Administrator Login"
+                  title="Store Administrator Gateway"
                 >
                   <Lock className="w-3.5 h-3.5 text-[#2E5EFF]" />
                   <span>Admin</span>
@@ -567,44 +535,37 @@ export default function App() {
 
               {/* Admin Section in Mobile Drawer */}
               <div className="pt-2 border-t border-[#1E2333] flex flex-col gap-2">
-                {authLoading ? (
-                  <div className="flex items-center justify-center py-2 text-xs text-[#8A90A6]">
-                    <div className="w-3.5 h-3.5 border border-[#1E2333] border-t-[#2E5EFF] rounded-full animate-spin mr-2" />
-                    Checking user status...
-                  </div>
-                ) : currentUser ? (
+                {isAdmin ? (
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-[#12141F] border border-[#1E2333] text-xs">
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="w-2 h-2 rounded-full bg-[#16C79A] flex-shrink-0" />
-                        <span className="text-[#8A90A6] truncate max-w-[180px]" title={currentUser.email || ''}>
-                          {currentUser.email}
+                        <span className="w-2 h-2 rounded-full bg-[#16C79A] flex-shrink-0 animate-pulse" />
+                        <span className="text-[#16C79A] font-semibold uppercase tracking-wider text-[11px]">
+                          Admin Mode Active
                         </span>
                       </div>
                       <button
                         onClick={() => {
-                          handleSignOut();
+                          handleAdminLogout();
                           setIsMobileMenuOpen(false);
                         }}
                         className="flex items-center gap-1 text-xs text-rose-400 hover:text-rose-300 font-medium ml-2 cursor-pointer flex-shrink-0"
                       >
                         <LogOut className="w-3.5 h-3.5" />
-                        <span>Sign Out</span>
+                        <span>Lock & Exit</span>
                       </button>
                     </div>
 
-                    {isAdmin && (
-                      <button
-                        onClick={() => {
-                          setIsMobileMenuOpen(false);
-                          openNewProductModal();
-                        }}
-                        className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-[#2E5EFF] hover:bg-[#254dd6] text-white font-semibold rounded-xl text-xs shadow-[0_0_15px_rgba(46,94,255,0.4)] transition-all cursor-pointer"
-                      >
-                        <Plus className="w-4 h-4 stroke-[2.5]" />
-                        <span>Add New Product Guide</span>
-                      </button>
-                    )}
+                    <button
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        openNewProductModal();
+                      }}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-[#2E5EFF] hover:bg-[#254dd6] text-white font-semibold rounded-xl text-xs shadow-[0_0_15px_rgba(46,94,255,0.4)] transition-all cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4 stroke-[2.5]" />
+                      <span>Add New Product Guide</span>
+                    </button>
                   </div>
                 ) : (
                   <button
@@ -616,7 +577,7 @@ export default function App() {
                     className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-[#12141F] hover:bg-[#1E2333] border border-[#1E2333] text-[#F5F6FA] font-medium rounded-xl text-xs transition-colors cursor-pointer"
                   >
                     <Lock className="w-3.5 h-3.5 text-[#2E5EFF]" />
-                    <span>Store Administrator Login</span>
+                    <span>Administrator Gateway</span>
                   </button>
                 )}
               </div>
@@ -666,14 +627,14 @@ export default function App() {
         )}
 
         {/* HERO SECTION */}
-        <section className="relative pt-10 pb-14 sm:pt-16 sm:pb-20 lg:pt-20 lg:pb-24 px-4 sm:px-6 lg:px-8 xl:px-12 max-w-7xl mx-auto w-full">
+        <section className="relative pt-10 pb-14 sm:pt-16 sm:pb-20 lg:pt-20 lg:pb-24 px-4 sm:px-6 lg:px-10 xl:px-14 w-full">
           {/* Ambient Floating Geometric Vectors */}
           <FloatingVectors />
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 xl:gap-16 items-center relative z-10">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 xl:gap-16 items-center relative z-10 w-full">
             
             {/* LEFT HALF: Content */}
-            <div className="lg:col-span-7 text-left z-10">
+            <div className="lg:col-span-7 xl:col-span-7 text-left z-10">
               
               {/* Headline */}
               <h1 className="text-3xl xs:text-4xl sm:text-5xl lg:text-[3.25rem] xl:text-[3.75rem] font-bold tracking-tight text-[#F5F6FA] leading-[1.12]">
@@ -681,7 +642,7 @@ export default function App() {
               </h1>
 
               {/* Subheadline directly below */}
-              <p className="mt-4 text-sm sm:text-base lg:text-lg text-[#8A90A6] max-w-xl font-normal leading-relaxed">
+              <p className="mt-4 text-sm sm:text-base lg:text-lg text-[#8A90A6] max-w-2xl font-normal leading-relaxed">
                 Battle-tested systems, tools, and playbooks to accelerate your work without the hype.
               </p>
 
@@ -716,7 +677,7 @@ export default function App() {
             </div>
 
             {/* RIGHT HALF: Hero Illustration Cutout Scene with 3D Unfolding Box & Pop-up Characters */}
-            <div className="lg:col-span-5 relative flex items-center justify-center select-none mt-4 lg:mt-0 w-full overflow-visible">
+            <div className="lg:col-span-5 xl:col-span-5 relative flex items-center justify-center select-none mt-4 lg:mt-0 w-full overflow-visible">
               <UnfoldingHeroBox />
             </div>
 
@@ -724,8 +685,8 @@ export default function App() {
         </section>
 
         {/* RESPONSIVE FEATURE HIGHLIGHTS BENTO GRID */}
-        <section className="py-6 sm:py-10 px-4 sm:px-6 lg:px-8 xl:px-12 max-w-7xl mx-auto w-full">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+        <section className="py-6 sm:py-10 px-4 sm:px-6 lg:px-10 xl:px-14 w-full">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 w-full">
             
             <div className="product-card rounded-2xl p-5 sm:p-6 flex items-start gap-4">
               <div className="w-10 h-10 rounded-xl bg-[#2E5EFF]/10 border border-[#2E5EFF]/30 flex items-center justify-center text-[#2E5EFF] flex-shrink-0">
@@ -773,7 +734,7 @@ export default function App() {
         </section>
 
         {/* PRODUCTS / STORE SECTION */}
-        <section id="store" className="py-14 sm:py-20 px-4 sm:px-6 lg:px-8 xl:px-12 max-w-7xl mx-auto w-full scroll-mt-20">
+        <section id="store" className="py-14 sm:py-20 px-4 sm:px-6 lg:px-10 xl:px-14 w-full scroll-mt-20">
           
           {/* Section Header */}
           <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-8 pb-4 border-b border-[#1E2333] gap-4">
@@ -796,8 +757,8 @@ export default function App() {
 
           {/* RESPONSIVE PRODUCTS GRID */}
           {loading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[1, 2, 3].map((n) => (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 w-full">
+              {[1, 2, 3, 4].map((n) => (
                 <div key={n} className="product-card rounded-2xl p-7 animate-pulse h-80 flex flex-col justify-between">
                   <div className="space-y-4">
                     <div className="w-24 h-5 bg-[#1E2333] rounded-md" />
@@ -811,12 +772,12 @@ export default function App() {
           ) : (
             <div className={
               products.length === 1
-                ? "flex flex-col md:flex-row items-center md:items-start justify-center gap-6 lg:gap-8 max-w-4xl mx-auto w-full"
-                : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8"
+                ? "grid grid-cols-1 md:grid-cols-12 gap-6 lg:gap-8 xl:gap-10 w-full items-stretch"
+                : "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 sm:gap-8 w-full"
             }>
               {products.length === 1 ? (
                 <>
-                  <div className="w-full max-w-[340px] sm:max-w-[360px] flex-shrink-0">
+                  <div className="w-full md:col-span-5 lg:col-span-4 xl:col-span-4 flex flex-col">
                     <ProductCard
                       product={products[0]}
                       isAdmin={isAdmin}
@@ -826,55 +787,59 @@ export default function App() {
                   </div>
                   
                   {/* Spotlight Overview Card for Single-Product Layout */}
-                  <div className="w-full max-w-md flex flex-col gap-4 min-w-0">
-                    <div className="product-card rounded-xl sm:rounded-2xl p-5 sm:p-6 border border-[#1E2333] bg-[#0E1018]">
-                      <span className="text-[10px] font-semibold text-[#16C79A] uppercase tracking-wider block mb-2 font-mono">
-                        Publication Spotlight
-                      </span>
-                      <h4 className="font-display text-base sm:text-lg font-bold text-[#F5F6FA] mb-2">
-                        2026 AI Career Edition
-                      </h4>
-                      <p className="text-xs sm:text-sm text-[#8A90A6] leading-relaxed mb-4">
-                        Curated for professionals, students, and freelancers seeking high-leverage AI workflows across tech careers.
-                      </p>
-                      <ul className="space-y-2.5 text-xs text-[#F5F6FA]">
-                        <li className="flex items-center gap-2">
-                          <Check className="w-3.5 h-3.5 text-[#16C79A] flex-shrink-0" />
-                          <span>Complete PDF Guide + Resource Blueprints</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <Check className="w-3.5 h-3.5 text-[#16C79A] flex-shrink-0" />
-                          <span>Tested Prompt Templates & Workflows</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <Check className="w-3.5 h-3.5 text-[#16C79A] flex-shrink-0" />
-                          <span>Lifetime edition revisions & additions</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <Check className="w-3.5 h-3.5 text-[#16C79A] flex-shrink-0" />
-                          <span>Instant access via secure Selar checkout</span>
-                        </li>
-                      </ul>
-                    </div>
-
-                    {isAdmin && (
-                      <div className="product-card rounded-xl sm:rounded-2xl p-4 sm:p-5 border border-[#2E5EFF]/30 bg-[#2E5EFF]/5 flex flex-col items-start gap-2.5">
-                        <span className="text-xs font-semibold text-[#2E5EFF] flex items-center gap-1.5">
-                          <Sparkles className="w-3.5 h-3.5" />
-                          <span>Owner Storefront Expansion</span>
+                  <div className="w-full md:col-span-7 lg:col-span-8 xl:col-span-8 flex flex-col gap-4 min-w-0">
+                    <div className="product-card rounded-xl sm:rounded-2xl p-5 sm:p-6 border border-[#1E2333] bg-[#0E1018] h-full flex flex-col justify-between">
+                      <div>
+                        <span className="text-[10px] font-semibold text-[#16C79A] uppercase tracking-wider block mb-2 font-mono">
+                          Publication Spotlight
                         </span>
-                        <p className="text-xs text-[#8A90A6] leading-relaxed">
-                          Want to list more guides? Add your next publication and the storefront grid will automatically expand into a multi-column catalog.
+                        <h4 className="font-display text-base sm:text-lg font-bold text-[#F5F6FA] mb-2">
+                          2026 AI Career Edition
+                        </h4>
+                        <p className="text-xs sm:text-sm text-[#8A90A6] leading-relaxed mb-6">
+                          Curated for professionals, students, and freelancers seeking high-leverage AI workflows across tech careers.
                         </p>
-                        <button
-                          onClick={openNewProductModal}
-                          className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-[#2E5EFF] hover:bg-[#254dd6] rounded-lg transition-colors cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add Publication</span>
-                        </button>
+                        <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-[#F5F6FA]">
+                          <li className="flex items-center gap-2">
+                            <Check className="w-3.5 h-3.5 text-[#16C79A] flex-shrink-0" />
+                            <span>Complete PDF Guide + Resource Blueprints</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <Check className="w-3.5 h-3.5 text-[#16C79A] flex-shrink-0" />
+                            <span>Tested Prompt Templates & Workflows</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <Check className="w-3.5 h-3.5 text-[#16C79A] flex-shrink-0" />
+                            <span>Lifetime edition revisions & additions</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <Check className="w-3.5 h-3.5 text-[#16C79A] flex-shrink-0" />
+                            <span>Instant access via secure Selar checkout</span>
+                          </li>
+                        </ul>
                       </div>
-                    )}
+
+                      {isAdmin && (
+                        <div className="mt-6 pt-5 border-t border-[#1E2333] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div>
+                            <span className="text-xs font-semibold text-[#2E5EFF] flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5" />
+                              <span>Store Catalog Expansion</span>
+                            </span>
+                            <p className="text-xs text-[#8A90A6] mt-0.5">
+                              Ready to list additional publications or blueprints?
+                            </p>
+                          </div>
+                          <button
+                            onClick={openNewProductModal}
+                            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-[#2E5EFF] hover:bg-[#254dd6] rounded-lg transition-colors cursor-pointer self-start sm:self-auto flex-shrink-0"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add Publication</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </>
               ) : (
@@ -893,8 +858,8 @@ export default function App() {
         </section>
 
         {/* FAQ SECTION (Corresponding to the FAQ nav pill) */}
-        <section id="faq" className="py-14 sm:py-20 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto w-full scroll-mt-20">
-          <div className="text-center mb-10">
+        <section id="faq" className="py-14 sm:py-20 px-4 sm:px-6 lg:px-10 xl:px-14 w-full scroll-mt-20">
+          <div className="text-center max-w-3xl mx-auto mb-10">
             <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#F5F6FA] tracking-tight font-display">
               Frequently Asked Questions
             </h2>
@@ -903,13 +868,13 @@ export default function App() {
             </p>
           </div>
 
-          <div className="space-y-3 sm:space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 w-full">
             {faqs.map((faq, idx) => {
               const isOpen = openFaqIndex === idx;
               return (
                 <div 
                   key={idx}
-                  className="product-card rounded-xl overflow-hidden transition-colors"
+                  className="product-card rounded-xl overflow-hidden transition-colors h-fit"
                 >
                   <button
                     onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
@@ -933,8 +898,8 @@ export default function App() {
         <ContactSection />
 
         {/* FOOTER */}
-        <footer id="site-footer" className="mt-auto border-t border-[#1E2333] bg-[#05060A] py-12 px-4 sm:px-6 lg:px-8 xl:px-12">
-          <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
+        <footer id="site-footer" className="mt-auto border-t border-[#1E2333] bg-[#05060A] py-12 px-4 sm:px-6 lg:px-10 xl:px-14 w-full">
+          <div className="w-full grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
             
             {/* Brand & Subtitle */}
             <div className="md:col-span-5 flex flex-col items-center md:items-start text-center md:text-left">
@@ -1030,15 +995,12 @@ export default function App() {
 
             <div className="text-center mb-6">
               <div className="w-10 h-10 rounded-full bg-[#2E5EFF]/10 border border-[#2E5EFF]/30 text-[#2E5EFF] flex items-center justify-center mx-auto mb-3">
-                <ShieldCheck className="w-5 h-5" />
+                <Lock className="w-5 h-5" />
               </div>
-              <h3 className="font-display text-lg font-bold text-[#F5F6FA]">Store Admin Sign In</h3>
+              <h3 className="font-display text-lg font-bold text-[#F5F6FA]">Administrator Gateway</h3>
               <p className="text-xs text-[#8A90A6] mt-1 max-w-xs mx-auto">
-                Sign in to manage product listings and updates.
+                Enter your private administrator credentials to unlock store management.
               </p>
-              <div className="mt-2 text-[11px] text-[#2E5EFF] font-mono bg-[#2E5EFF]/10 py-1 px-2.5 rounded-full border border-[#2E5EFF]/25 inline-block">
-                Authorized: {ADMIN_EMAIL}
-              </div>
             </div>
 
             {authError && (
@@ -1048,57 +1010,41 @@ export default function App() {
               </div>
             )}
 
-            {/* Google Sign In */}
-            <button
-              id="google-signin-btn"
-              onClick={handleGoogleSignIn}
-              className="w-full flex items-center justify-center gap-3 py-2.5 px-4 bg-white hover:bg-neutral-100 text-neutral-900 font-semibold rounded-xl text-sm transition-all shadow-md cursor-pointer mb-4"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-              </svg>
-              <span>Continue with Google</span>
-            </button>
-
-            <div className="relative my-4 flex items-center justify-center">
-              <div className="border-t border-[#1E2333] w-full" />
-              <span className="bg-[#0E1018] px-3 text-[11px] text-[#8A90A6] uppercase tracking-wider absolute">
-                Or credentials
-              </span>
-            </div>
-
-            {/* Email/Password Sign In */}
-            <form onSubmit={handleEmailSignIn} className="space-y-3">
+            {/* Private Admin Credentials Form */}
+            <form onSubmit={handleAdminLogin} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-[#8A90A6] mb-1">Email</label>
+                <label className="block text-xs font-medium text-[#8A90A6] mb-1">
+                  Administrator Username or ID
+                </label>
                 <input
-                  type="email"
-                  value={emailInput}
-                  onChange={(e) => setEmailInput(e.target.value)}
-                  placeholder="shopmoney962@gmail.com"
+                  type="text"
+                  value={adminUsername}
+                  onChange={(e) => setAdminUsername(e.target.value)}
+                  placeholder="Enter administrator ID"
                   required
-                  className="w-full px-3.5 py-2 rounded-xl bg-[#05060A] border border-[#1E2333] text-[#F5F6FA] placeholder-[#8A90A6]/40 text-sm focus:outline-none focus:border-[#2E5EFF]"
+                  autoFocus
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#05060A] border border-[#1E2333] text-[#F5F6FA] placeholder-[#8A90A6]/40 text-sm focus:outline-none focus:border-[#2E5EFF] transition-colors"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-[#8A90A6] mb-1">Password</label>
+                <label className="block text-xs font-medium text-[#8A90A6] mb-1">
+                  Master Passkey
+                </label>
                 <input
                   type="password"
-                  value={passwordInput}
-                  onChange={(e) => setPasswordInput(e.target.value)}
-                  placeholder="••••••••"
+                  value={adminPasscode}
+                  onChange={(e) => setAdminPasscode(e.target.value)}
+                  placeholder="••••••••••••"
                   required
-                  className="w-full px-3.5 py-2 rounded-xl bg-[#05060A] border border-[#1E2333] text-[#F5F6FA] placeholder-[#8A90A6]/40 text-sm focus:outline-none focus:border-[#2E5EFF]"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#05060A] border border-[#1E2333] text-[#F5F6FA] placeholder-[#8A90A6]/40 text-sm focus:outline-none focus:border-[#2E5EFF] transition-colors"
                 />
               </div>
               <button
+                id="admin-submit-login-btn"
                 type="submit"
-                className="w-full py-2.5 bg-[#2E5EFF] hover:bg-[#254dd6] text-white font-semibold rounded-xl text-sm transition-colors cursor-pointer"
+                className="w-full py-2.5 bg-[#2E5EFF] hover:bg-[#254dd6] text-white font-semibold rounded-xl text-sm transition-colors cursor-pointer shadow-[0_0_15px_rgba(46,94,255,0.3)]"
               >
-                Sign In
+                Authenticate & Unlock
               </button>
             </form>
           </div>

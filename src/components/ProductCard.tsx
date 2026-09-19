@@ -32,7 +32,7 @@ export function ProductCard({ product, isAdmin, onEdit, onDelete }: ProductCardP
   return (
     <article
       id={`product-card-${product.id}`}
-      className="product-card max-w-[360px] mx-auto w-full rounded-xl sm:rounded-2xl p-4 sm:p-5 flex flex-col justify-between group hover:border-[#2E5EFF]/40 transition-all duration-300"
+      className="product-card w-full rounded-xl sm:rounded-2xl p-4 sm:p-5 flex flex-col justify-between group hover:border-[#2E5EFF]/40 transition-all duration-300"
     >
       <div>
         {/* THUMBNAIL CONTAINER */}

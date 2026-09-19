@@ -21,10 +21,24 @@ if (typeof window !== 'undefined') {
 // In this project firestoreDatabaseId is provided in firebaseConfig
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || '(default)');
 
-// The authorized administrator email for writes
-export const ADMIN_EMAIL = 'shopmoney962@gmail.com';
+// Hardcoded administrator credentials known only to the site owner
+export const ADMIN_CREDENTIALS = {
+  username: 'erex-admin',
+  secretPasscode: 'ErexStore2026!Admin',
+  // Secret secondary identifier (accepted if typed, but never displayed in UI)
+  secretEmail: 'shopmoney962@gmail.com',
+};
 
-export function isUserAdmin(email?: string | null): boolean {
-  if (!email) return false;
-  return email.trim().toLowerCase() === ADMIN_EMAIL.toLowerCase();
+export function verifyAdminCredentials(username: string, passcode: string): boolean {
+  if (!username || !passcode) return false;
+  const cleanUser = username.trim().toLowerCase();
+  const cleanPass = passcode.trim();
+
+  const isUserValid = 
+    cleanUser === ADMIN_CREDENTIALS.username.toLowerCase() ||
+    cleanUser === ADMIN_CREDENTIALS.secretEmail.toLowerCase();
+
+  const isPassValid = cleanPass === ADMIN_CREDENTIALS.secretPasscode;
+
+  return isUserValid && isPassValid;
 }
