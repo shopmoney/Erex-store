@@ -1,0 +1,6 @@
+{
+  "name": "Erex Store",
+  "description": "Personal storefront for selling digital products, AI tools, and career guides.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

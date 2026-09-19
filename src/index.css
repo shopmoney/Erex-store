@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: #05060A;
+    color: #F5F6FA;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: 'Syne', sans-serif;
+    letter-spacing: -0.025em;
+  }
+}
+
+/* Custom Hero Glow Blob - Off-center, 200px+ blur blending #2E5EFF into #16C79A */
+.hero-glow-blob {
+  position: absolute;
+  top: 10%;
+  left: 28%;
+  width: 680px;
+  height: 520px;
+  background: radial-gradient(circle at 40% 45%, rgba(46, 94, 255, 0.45) 0%, rgba(22, 199, 154, 0.35) 45%, transparent 72%);
+  filter: blur(140px);
+  pointer-events: none;
+  z-index: 0;
+  border-radius: 9999px;
+  opacity: 0.85;
+}
+
+@keyframes slowGlowFloat {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: translate(25px, -15px) scale(1.06);
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1);
+    opacity: 0.8;
+  }
+}
+
+.animate-glow-float {
+  animation: slowGlowFloat 16s ease-in-out infinite alternate;
+}
+
+/* Hero cutout illustration styling - true transparent alpha cutout */
+.hero-character-cutout {
+  background-color: transparent;
+}
+
+@keyframes characterDrift {
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
+}
+
+.animate-character-drift {
+  animation: characterDrift 7s ease-in-out infinite;
+}
+
+/* Custom Card & Glows */
+.product-card {
+  background-color: #0E1018;
+  border: 1px solid #1E2333;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.product-card:hover {
+  border-color: rgba(46, 94, 255, 0.55);
+  box-shadow: 0 16px 40px -10px rgba(46, 94, 255, 0.22),
+              0 0 25px -4px rgba(22, 199, 154, 0.2);
+  transform: translateY(-4px);
+}
+
+/* Nav & Header Pill Button Style */
+.nav-pill {
+  background-color: rgba(18, 20, 31, 0.7);
+  border: 1px solid #1E2333;
+  color: #F5F6FA;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+}
+
+.nav-pill:hover {
+  border-color: rgba(46, 94, 255, 0.5);
+  color: #ffffff;
+  background-color: rgba(24, 27, 43, 0.85);
+}
+
+.badge-pill {
+  background-color: rgba(18, 20, 31, 0.7);
+  border: 1px solid #1E2333;
+  color: #8A90A6;
+  backdrop-filter: blur(8px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-glow-float,
+  .animate-character-drift {
+    animation: none !important;
+  }
+  * {
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/firebase/firebase-tools/master/schema/firestore-blueprint.json",
+  "collections": {
+    "products": {
+      "description": "Digital products, guides, and ebooks available for sale",
+      "fields": {
+        "title": { "type": "string", "description": "Product title" },
+        "description": { "type": "string", "description": "Short description of the product" },
+        "price": { "type": "string", "description": "Display price e.g. $19" },
+        "checkoutUrl": { "type": "string", "description": "Checkout or external purchase URL" },
+        "category": { "type": "string", "description": "Optional category or tag e.g. AI Career Guide" },
+        "badge": { "type": "string", "description": "Optional badge e.g. Bestseller, New" },
+        "createdAt": { "type": "string", "description": "ISO string timestamp" },
+        "updatedAt": { "type": "string", "description": "ISO string timestamp" }
+      },
+      "rules": {
+        "read": true,
+        "write": "request.auth != null && (request.auth.token.email == 'shopmoney962@gmail.com' || request.auth.token.email.lower() == 'shopmoney962@gmail.com')"
+      }
+    }
+  }
+}
