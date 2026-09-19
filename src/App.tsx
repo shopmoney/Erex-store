@@ -34,7 +34,9 @@ import {
   Menu,
   Home,
   HelpCircle,
-  PhoneCall
+  PhoneCall,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 import { UnfoldingHeroBox } from './components/UnfoldingHeroBox.tsx';
@@ -66,6 +68,7 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [adminUsername, setAdminUsername] = useState('');
   const [adminPasscode, setAdminPasscode] = useState('');
+  const [showPasscode, setShowPasscode] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
   // Product Create/Edit state
@@ -169,7 +172,9 @@ export default function App() {
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
-    if (verifyAdminCredentials(adminUsername, adminPasscode)) {
+    const cleanUser = adminUsername.trim();
+    const cleanPass = adminPasscode.trim();
+    if (verifyAdminCredentials(cleanUser, cleanPass)) {
       setIsAdmin(true);
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('erex_admin_session', 'true');
@@ -177,6 +182,7 @@ export default function App() {
       setIsAuthModalOpen(false);
       setAdminUsername('');
       setAdminPasscode('');
+      setShowPasscode(false);
       setActionSuccessMsg('Admin Mode unlocked. Store management access granted.');
     } else {
       setAuthError('Access denied: Invalid administrator credentials.');
@@ -1030,14 +1036,24 @@ export default function App() {
                 <label className="block text-xs font-medium text-[#8A90A6] mb-1">
                   Master Passkey
                 </label>
-                <input
-                  type="password"
-                  value={adminPasscode}
-                  onChange={(e) => setAdminPasscode(e.target.value)}
-                  placeholder="••••••••••••"
-                  required
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#05060A] border border-[#1E2333] text-[#F5F6FA] placeholder-[#8A90A6]/40 text-sm focus:outline-none focus:border-[#2E5EFF] transition-colors"
-                />
+                <div className="relative">
+                  <input
+                    type={showPasscode ? "text" : "password"}
+                    value={adminPasscode}
+                    onChange={(e) => setAdminPasscode(e.target.value)}
+                    placeholder="••••••••••••"
+                    required
+                    className="w-full px-3.5 py-2.5 pr-10 rounded-xl bg-[#05060A] border border-[#1E2333] text-[#F5F6FA] placeholder-[#8A90A6]/40 text-sm focus:outline-none focus:border-[#2E5EFF] transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPasscode(prev => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8A90A6] hover:text-[#F5F6FA] transition-colors p-1"
+                    title={showPasscode ? "Hide passkey" : "Show passkey"}
+                  >
+                    {showPasscode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
               <button
                 id="admin-submit-login-btn"

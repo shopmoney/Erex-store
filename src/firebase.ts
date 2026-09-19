@@ -25,8 +25,12 @@ export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || '(defa
 export const ADMIN_CREDENTIALS = {
   username: 'erex-admin',
   secretPasscode: 'ErexStore2026!Admin',
-  // Secret secondary identifier (accepted if typed, but never displayed in UI)
-  secretEmail: 'shopmoney962@gmail.com',
+  // Accepted secret admin aliases if typed
+  acceptedAliases: [
+    'erex-admin',
+    'shopmoney962@gmail.com',
+    'shopmoney926@gmail.com'
+  ]
 };
 
 export function verifyAdminCredentials(username: string, passcode: string): boolean {
@@ -35,8 +39,7 @@ export function verifyAdminCredentials(username: string, passcode: string): bool
   const cleanPass = passcode.trim();
 
   const isUserValid = 
-    cleanUser === ADMIN_CREDENTIALS.username.toLowerCase() ||
-    cleanUser === ADMIN_CREDENTIALS.secretEmail.toLowerCase();
+    ADMIN_CREDENTIALS.acceptedAliases.some(alias => alias.toLowerCase() === cleanUser);
 
   const isPassValid = cleanPass === ADMIN_CREDENTIALS.secretPasscode;
 
